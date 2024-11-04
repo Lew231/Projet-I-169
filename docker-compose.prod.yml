@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.5
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=your-email@example.com"  # Remplace par ton email
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"            # HTTP
+      - "443:443"          # HTTPS
+      - "8080:8080"        # Traefik Dashboard (facultatif)
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"  # Pour permettre à Traefik de détecter les conteneurs
+      - "./letsencrypt:/letsencrypt"  # Pour stocker les certificats SSL générés
+    networks:
+      - internal
+
+  wordpress:
+    image: wordpress:latest
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wordpress.rule=Host(`ICT-169.com`)"  # Remplace par ton domaine
+      - "traefik.http.routers.wordpress.entrypoints=websecure"  # Utilise HTTPS
+      - "traefik.http.routers.wordpress.tls.certresolver=myresolver"  # Résout le certificat via Let's Encrypt
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: ${MYSQL_USER}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
+    volumes:
+      - ./app/wordpress:/var/www/html  # Volume pour stocker les fichiers WordPress localement
+    networks:
+      - internal
+    depends_on:
+      - db
+
+  db:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql  # Volume persistant pour la base de données
+    networks:
+      - internal
+    expose:
+      - "3306"  # Expose uniquement au réseau interne, non pas à l'extérieur pour sécurité
+
+networks:
+  internal:
+    driver: bridge  # Crée un réseau interne pour les services qui ne doivent pas être accessibles publiquement
+
+volumes:
+  db_data:
+  letsencrypt:
